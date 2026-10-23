@@ -42,6 +42,9 @@ export function purchaseHint(p: Purchase, today: ISODate, noticeDaysBefore: numb
     const text = left === 0 ? '↩ i dag' : left === 1 ? '↩ 1 dag' : `↩ ${left} dage`;
     return { text, tone: left <= noticeDaysBefore ? 'warn' : 'muted' };
   }
-  if (daysBetween(today, p.complaintUntil) >= 0) return { text: 'Reklamationsret gemt', tone: 'ok' };
+  const complaintLeft = daysBetween(today, p.complaintUntil);
+  if (complaintLeft >= 0 && complaintLeft <= 30) return { text: 'Garanti udløber snart', tone: 'warn' };
+  if (p.returnDays === null && p.category === 'mad') return { text: 'Mad', tone: 'muted' };
+  if (complaintLeft >= 0) return { text: 'Reklamationsret gemt', tone: 'ok' };
   return { text: 'Udløbet', tone: 'muted' };
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
+import { useGoBack } from './useGoBack';
 
 interface TopBarProps {
   /** Show a back button. A string is the fallback route when there is no history. */
@@ -11,14 +11,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ back, title, right }: TopBarProps) {
-  const navigate = useNavigate();
-
-  const goBack = () => {
-    // HashRouter keeps an index in history.state; idx 0 means this is the first entry.
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate(typeof back === 'string' ? back : '/');
-  };
+  const goBack = useGoBack(typeof back === 'string' ? back : '/');
 
   return (
     <div className="top">

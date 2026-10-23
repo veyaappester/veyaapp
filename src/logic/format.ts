@@ -43,6 +43,18 @@ export function fmtMonthShort(iso: string): string {
   return format(fromISO(iso), 'MMM', { locale: da }).replace('.', '');
 }
 
+/** Parses user/OCR amounts: "1.899,00", "1899", "49,5 kr." → number (NaN if invalid). */
+export function parseAmount(input: string): number {
+  let s = input.replace(/kr\.?|dkk|\s/gi, '');
+  if (!s) return NaN;
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, ''); // "1.899" is a thousands separator, not decimals
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

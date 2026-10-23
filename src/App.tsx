@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { DailyNotifier } from './components/DailyNotifier';
 import { Nav } from './components/Nav';
+import { notificationsEnabled } from './pwa/notify';
 import { ToastProvider } from './components/Toast';
 import { useProfile, useToday } from './db/hooks';
 import { runRecurring } from './db/subscriptions';
@@ -41,6 +43,7 @@ export default function App() {
           {content}
         </div>
         {showNav && <Nav />}
+        {hasProfile && notificationsEnabled() && <DailyNotifier today={today} />}
       </ToastProvider>
     </main>
   );

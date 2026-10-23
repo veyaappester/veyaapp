@@ -13,8 +13,12 @@ import '@fontsource/dm-sans/latin-700.css';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
+import { registerSW } from 'virtual:pwa-register';
 import './pwa/install';
 import App from './App';
+
+// Installable + offline: the service worker updates itself in the background.
+registerSW({ immediate: true });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -110,7 +110,10 @@
   font: 600 12px var(--font-ui);
   background: none;
   border: 0;
-  padding: 10px 0 10px 8px;
+  padding: 0 0 0 8px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
   cursor: pointer;
 }
@@ -475,7 +478,7 @@ button.row:active {
   border: 0;
   border-radius: 10px;
   padding: 0 12px;
-  min-height: 36px;
+  min-height: 40px;
   font: 500 12px var(--font-ui);
   color: var(--muted);
   white-space: nowrap;
@@ -530,7 +533,7 @@ button.row:active {
 
 .action.compact {
   width: auto;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 14px;
   font-size: 13px;
 }
@@ -567,9 +570,9 @@ button.row:active {
   border: 1px solid var(--line);
   background: var(--white);
   color: var(--deep);
-  border-radius: 20px;
-  min-height: 36px;
-  padding: 6px 13px;
+  border-radius: 22px;
+  min-height: 44px;
+  padding: 6px 14px;
   font: 500 12px var(--font-ui);
 }
 
@@ -750,7 +753,7 @@ fieldset.field {
 }
 
 .nav a {
-  color: #8f86a0;
+  color: var(--muted);
   font: 500 10px var(--font-ui);
   display: flex;
   flex-direction: column;

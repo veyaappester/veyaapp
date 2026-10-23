@@ -134,25 +134,29 @@ export default function Home() {
         </div>
       </Link>
 
-      <div className="section-head">
-        <h2>Abonnementer</h2>
-        <Link to="/abonnementer" className="link">
-          Se alle
-        </Link>
-      </div>
-      <Link to="/abonnementer" className="row">
-        <div className="row-icon">
-          <Icon name="repeat" />
-        </div>
-        <div className="row-main">
-          <b>{kr(monthlyTotal(activeSubs))} hver måned</b>
-          <span>
-            {activeSubs.length} aktive abonnementer
-            {nextSub ? ` · ${nextSub.name} ${relDays(daysBetween(today, nextSub.nextPayment))}` : ''}
-          </span>
-        </div>
-        <Icon name="chevron" className="chev" />
-      </Link>
+      {activeSubs.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2>Abonnementer</h2>
+            <Link to="/abonnementer" className="link">
+              Se alle
+            </Link>
+          </div>
+          <Link to="/abonnementer" className="row">
+            <div className="row-icon">
+              <Icon name="repeat" />
+            </div>
+            <div className="row-main">
+              <b>{kr(monthlyTotal(activeSubs))} hver måned</b>
+              <span>
+                {activeSubs.length} aktive abonnementer
+                {nextSub ? ` · ${nextSub.name} ${relDays(daysBetween(today, nextSub.nextPayment))}` : ''}
+              </span>
+            </div>
+            <Icon name="chevron" className="chev" />
+          </Link>
+        </>
+      )}
 
       {recent.length > 0 && (
         <>

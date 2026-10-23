@@ -2,7 +2,7 @@
 
 Veya er en life-admin-app til 16–25-årige. Den samler køb, kvitteringer, abonnementer, regninger, returfrister og garantier ét sted og viser kun det, der kræver handling i dag.
 
-**Live:** https://andreasbjoerk.github.io/veyaapp/
+**Live:** https://veyaappester.github.io/veyaapp/
 
 Alle data gemmes kun på din egen enhed (IndexedDB). Der er intet login og ingen server. Åbner du linket på en ny telefon, får du en ny, tom Veya. Tryk "Prøv med demodata" for at se appen fyldt med eksempler.
 

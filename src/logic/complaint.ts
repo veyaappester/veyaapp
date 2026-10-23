@@ -10,7 +10,7 @@ export function complaintText(p: Purchase, profile: Pick<Profile, 'name'>): stri
     '',
     `Jeg vil gerne reklamere over ${p.product}, som jeg købte hos jer den ${fmtFull(p.date)}${
       p.storeLocation ? ` (${p.storeLocation})` : ''
-    } for ${kr(p.price)}.`,
+    } for ${kr(p.price)}`, // kr() already ends with "kr."
     '',
     'Fejlen er: [beskriv kort, hvad der er galt, og hvornår det startede]',
     '',

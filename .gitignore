@@ -1,6 +1,7 @@
 node_modules
 dist
 dev-dist
+public/ocr
 *.local
 .DS_Store
 *.log

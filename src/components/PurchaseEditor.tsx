@@ -55,7 +55,8 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
   const [initialised, setInitialised] = useState(!!editing);
   if (!initialised && prefsQuery) {
     setInitialised(true);
-    if (initial.returnDays === '' && !initial.noReturn) applyDefaults(initial.store, undefined, initial);
+    // A scan that looks like an online order keeps "på nettet"; otherwise the store decides.
+    if (initial.returnDays === '' && !initial.noReturn) applyDefaults(initial.store, initial.boughtOnline || undefined, initial);
   }
 
   const price = parseAmount(d.price);

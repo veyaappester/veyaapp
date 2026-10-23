@@ -14,7 +14,7 @@ export default function Purchases() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Category | 'alle'>('alle');
 
-  const purchases = useMemo(() => [...(data?.purchases ?? [])].sort((a, b) => b.date.localeCompare(a.date)), [data]);
+  const purchases = useMemo(() => [...(data?.purchases ?? [])].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [data]);
   const inUse = categories.filter((c) => purchases.some((p) => p.category === c));
 
   const q = query.trim().toLowerCase();

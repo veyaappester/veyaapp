@@ -1,0 +1,42 @@
+:root {
+  --primary: #825fc1; /* buttons, active nav, links */
+  --deep: #3d1a70; /* dark text on tinted buttons */
+  --mint: #f0eaff; /* tinted surfaces, icon backgrounds */
+  --pale: #faf8fd; /* cards, inputs, tab background */
+  --ink: #221632; /* main text */
+  --muted: #6f6480; /* secondary text (darkened from #7e738d for AA contrast) */
+  --line: #eee8f4; /* dividers */
+  --warn: #e68a3f; /* deadlines, warnings */
+  --danger: #d75c5c; /* overdue */
+  --ok: #2e9e6a; /* paid / handled */
+  --white: #ffffff;
+
+  /* Tinted surfaces for notice tones */
+  --warn-bg: #fff8f2;
+  --warn-border: #ffeedd;
+  --warn-icon: #ffeedd;
+  --warn-text: #b4600f;
+  --danger-bg: #fff5f5;
+  --danger-border: #fbe1e1;
+  --danger-icon: #fbe1e1;
+  --danger-text: #b23c3c;
+  --ok-bg: #f3fbf7;
+  --ok-border: #e2f4ea;
+  --ok-icon: #dcf2e6;
+  --ok-text: #22784f;
+  --info-bg: #f6f2ff;
+  --info-border: #e9e0fb;
+
+  --font-heading: 'Poppins', 'DM Sans', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+
+  --radius-s: 10px;
+  --radius-m: 14px;
+  --radius-l: 18px;
+  --radius-xl: 24px;
+
+  --nav-height: 74px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}

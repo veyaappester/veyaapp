@@ -3,5 +3,8 @@ dist
 dev-dist
 public/ocr
 *.local
+.env
+.env.*
+!.env.example
 .DS_Store
 *.log

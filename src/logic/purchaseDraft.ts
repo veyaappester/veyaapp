@@ -17,6 +17,8 @@ export interface PurchaseDraft {
   extraWarrantyUntil: string;
   paymentMethod: string;
   receiptNumber: string;
+  register: string;
+  time: string;
   note: string;
 }
 
@@ -35,6 +37,8 @@ export function emptyDraft(): PurchaseDraft {
     extraWarrantyUntil: '',
     paymentMethod: '',
     receiptNumber: '',
+    register: '',
+    time: '',
     note: '',
   };
 }
@@ -54,6 +58,8 @@ export function draftFromPurchase(p: Purchase): PurchaseDraft {
     extraWarrantyUntil: p.extraWarrantyUntil ?? '',
     paymentMethod: p.paymentMethod ?? '',
     receiptNumber: p.receiptNumber ?? '',
+    register: p.register ?? '',
+    time: p.time ?? '',
     note: p.note ?? '',
   };
 }

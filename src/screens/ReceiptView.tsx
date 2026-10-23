@@ -157,12 +157,18 @@ function StoreView({ p, onBack }: { p: Purchase; onBack: () => void }) {
         </div>
         <div className="kv">
           <span>Købsdato</span>
-          <b>{fmtFull(p.date)}</b>
+          <b>
+            {fmtFull(p.date)}
+            {p.time ? ` kl. ${p.time}` : ''}
+          </b>
         </div>
         {p.receiptNumber && (
           <div className="kv">
             <span>Kassebon nr.</span>
-            <b>{p.receiptNumber}</b>
+            <b>
+              {p.receiptNumber}
+              {p.register ? ` · kasse ${p.register}` : ''}
+            </b>
           </div>
         )}
         <div className="kv">

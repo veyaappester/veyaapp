@@ -30,6 +30,8 @@ export interface Purchase {
   receiptImageId?: string;
   receiptText?: string; // raw OCR text (searchable)
   receiptNumber?: string;
+  register?: string; // kasse nr.
+  time?: string; // time of purchase from the receipt, "17.39"
   paymentMethod?: string;
   status: PurchaseStatus;
   note?: string;

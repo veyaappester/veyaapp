@@ -6,10 +6,27 @@ import { useToast } from '../components/toastContext';
 import { TopBar } from '../components/TopBar';
 import { useProfile } from '../db/hooks';
 import { savePurchase } from '../db/purchases';
-import { todayISO } from '../logic/dates';
+import { fmtFull, kr } from '../logic/format';
 import { emptyDraft, type PurchaseDraft } from '../logic/purchaseDraft';
-import { suggestProduct } from '../logic/receiptParser';
+import { parseReceipt, suggestProduct, type ParsedReceipt } from '../logic/receiptParser';
 import { getScanSession, setScanSession } from '../ocr/scanSession';
+
+function draftFrom(parsed: ParsedReceipt): PurchaseDraft {
+  return {
+    ...emptyDraft(),
+    product: suggestProduct(parsed) ?? '',
+    store: parsed.store ?? '',
+    storeLocation: parsed.storeLocation ?? '',
+    category: parsed.category ?? '',
+    date: parsed.date ?? '',
+    price: parsed.total ? String(parsed.total).replace('.', ',') : '',
+    boughtOnline: parsed.online,
+    paymentMethod: parsed.paymentMethod ?? '',
+    receiptNumber: parsed.receiptNumber ?? '',
+    register: parsed.register ?? '',
+    time: parsed.time ?? '',
+  };
+}
 
 export default function ScanResult() {
   const navigate = useNavigate();
@@ -18,7 +35,9 @@ export default function ScanResult() {
   const [session] = useState(getScanSession);
   const [thumbUrl, setThumbUrl] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [showText, setShowText] = useState(false);
+  const [text, setText] = useState(session?.text.trim() ?? '');
+  const [parsed, setParsed] = useState(session?.parsed);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     if (!session) return;
@@ -27,26 +46,24 @@ export default function ScanResult() {
     return () => URL.revokeObjectURL(url);
   }, [session]);
 
-  if (!session) return <Navigate to="/scan" replace />;
+  if (!session || !parsed) return <Navigate to="/scan" replace />;
   if (!profile) return null;
 
-  const { parsed } = session;
-  // A date in the future is almost certainly misread; let the user fix it.
-  const date = parsed.date && parsed.date <= todayISO() ? parsed.date : undefined;
-  const product = suggestProduct(parsed);
-  const initial: PurchaseDraft = {
-    ...emptyDraft(),
-    product: product ?? '',
-    store: parsed.store ?? '',
-    storeLocation: parsed.storeLocation ?? '',
-    date: date ?? '',
-    price: parsed.total ? String(parsed.total).replace('.', ',') : '',
-    boughtOnline: parsed.online,
-    paymentMethod: parsed.paymentMethod ?? '',
-    receiptNumber: parsed.receiptNumber ?? '',
-  };
+  const initial = draftFrom(parsed);
   const missing = (['product', 'store', 'date', 'price'] as const).filter((k) => !initial[k]);
-  const found = [parsed.store && 'butik', date && 'dato', parsed.total && 'pris', product && 'produkt'].filter(Boolean) as string[];
+  const uncertain = parsed.uncertain.map((f) => f as keyof PurchaseDraft);
+  const found = [
+    parsed.store,
+    parsed.date && `${fmtFull(parsed.date)}${parsed.time ? ` kl. ${parsed.time}` : ''}`,
+    parsed.total && kr(parsed.total),
+  ].filter(Boolean) as string[];
+
+  const reparse = () => {
+    // Re-reads the corrected text and refills the form (keeps the same photo).
+    setParsed(parseReceipt(text));
+    setVersion((v) => v + 1);
+    toast('Veya har læst den rettede tekst.');
+  };
 
   return (
     <section className="page">
@@ -57,37 +74,48 @@ export default function ScanResult() {
         </div>
         <h1 style={{ fontSize: 23 }}>{missing.length === 4 ? 'Tjek kvitteringen' : 'Køb fundet'}</h1>
         <p className="muted">
-          {missing.length === 0
+          {missing.length === 0 && uncertain.length === 0
             ? 'Tjek detaljerne før du gemmer.'
             : missing.length === 4
               ? 'Veya kunne ikke læse så meget. Udfyld felterne selv.'
-              : 'Tjek detaljerne, og udfyld de markerede felter.'}
+              : 'Tjek de markerede felter mod kvitteringen, før du gemmer.'}
         </p>
       </div>
 
       <div className="info row" style={{ padding: 12, gap: 14 }}>
         {thumbUrl && <img src={thumbUrl} alt="Din scannede kvittering" className="thumb" />}
         <div className="row-main wrap">
-          <b>{found.length ? `Veya fandt ${found.join(', ')}` : 'Billedet er gemt'}</b>
-          <span>Kvitteringen gemmes sammen med købet, så du kan vise den i butikken.</span>
-          {session.text.trim() && (
-            <button type="button" className="link" style={{ padding: '6px 0 0' }} onClick={() => setShowText((v) => !v)}>
-              {showText ? 'Skjul den læste tekst' : 'Se den læste tekst'}
-            </button>
-          )}
+          <b>{found.length ? `Veya fandt ${found.join(' · ')}` : 'Billedet er gemt'}</b>
+          <span>
+            {parsed.items.length
+              ? `${parsed.items.length} ${parsed.items.length === 1 ? 'vare' : 'varer'}: ${parsed.items.map((i) => i.name).join(', ')}`
+              : 'Kvitteringen gemmes sammen med købet, så du kan vise den i butikken.'}
+          </span>
         </div>
       </div>
-      {showText && <pre className="receipt-text" style={{ width: 'auto', margin: '0 0 12px' }}>{session.text.trim()}</pre>}
+
+      <details className="ocr-text">
+        <summary>{text ? 'Se og ret den læste tekst' : 'Skriv kvitteringens tekst selv'}</summary>
+        <label className="field">
+          <span className="sr-only">Kvitteringens tekst</span>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Fx REMA 1000 … AT BETALE 20,00 … 18.10.26 17.39" />
+        </label>
+        <button type="button" className="action secondary" onClick={reparse} disabled={!text.trim()}>
+          <Icon name="repeat" size={18} /> Læs teksten igen
+        </button>
+      </details>
 
       <PurchaseEditor
+        key={version}
         profile={profile}
         initial={initial}
         missing={missing}
+        uncertain={uncertain}
         busy={busy}
         submitLabel="Gem køb og opdater overblik"
         onSubmit={async (input) => {
           setBusy(true);
-          await savePurchase({ ...input, receiptText: session.text.trim() || undefined }, undefined, {
+          await savePurchase({ ...input, receiptText: text.trim() || undefined }, undefined, {
             blob: session.blob,
             thumb: session.thumb,
           });

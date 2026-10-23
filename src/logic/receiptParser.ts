@@ -1,72 +1,120 @@
+import type { Category } from '../db/types';
+import { todayISO } from './dates';
 import { findStoreDefault } from './storeDefaults';
+import { matchStore } from './storeMatch';
+
+/** Fields the review screen can flag as "Veya is not sure". */
+export type ReceiptField = 'store' | 'date' | 'price' | 'product' | 'paymentMethod' | 'receiptNumber';
 
 export interface ParsedReceipt {
   store?: string;
   storeLocation?: string;
+  category?: Category;
   date?: string; // ISO yyyy-MM-dd
+  time?: string; // "17.39"
   total?: number;
   items: { name: string; amount: number }[];
   receiptNumber?: string;
+  register?: string; // kasse nr.
   paymentMethod?: string;
   online: boolean;
+  /** Fields that were found but may be misread. */
+  uncertain: ReceiptField[];
 }
 
-// Amounts like 1.899,00 · 1 899,00 · 1899,00 · 1899.00 · 49,95 (always with øre, as on receipts).
-const AMOUNT_RE = /(?<![\d,.])(-?\d{1,3}(?:[. ]\d{3})+|-?\d+)\s?[,.]\s?(\d{2})(?![\d])/g;
+export interface ParseOptions {
+  /** Dates after this are rejected as misreads. Defaults to today. */
+  today?: string;
+  /** OCR confidence (0–100) per line, keyed by the trimmed line text. */
+  lineConfidence?: Map<string, number>;
+}
+
+/** Below this OCR confidence a line's values are flagged for review. */
+const LOW_CONFIDENCE = 75;
+
+// Amounts with øre: 14,00 · 14.00 · 1.899,00 · 1 899,00 · 1,899.00
+const AMOUNT_RE = /(?<![\d,.])(-?\d{1,3}(?:[. ,]\d{3})+|-?\d+)\s?([,.])\s?(\d{2})(?![\d])/g;
 
 const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, maj: 5, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, dec: 12,
 };
 
-const TOTAL_WORDS = [
+const TOTAL_WORDS: { re: RegExp; rank: number }[] = [
   { re: /\b(at\s*betale|til\s*betaling)\b/i, rank: 0 },
   { re: /\b(total|totalt|i\s*alt|ialt|beløb\s*i\s*alt)\b/i, rank: 1 },
-  { re: /\b(sum|beløb|betalt|dankort|visa|mastercard|kort)\b/i, rank: 2 },
+  { re: /\bsum\b/i, rank: 2 },
 ];
+const NOT_TOTAL = /(sub\s*total|moms|vat|heraf|byttepenge|rabat|retur|antal|point|bonus)/i;
 
-/** Lines that contain an amount but are not a product. */
-const NOT_ITEM = /(sub\s*total|total|i\s*alt|ialt|at\s*betale|moms|vat|byttepenge|retur|kontant|dankort|visa|mastercard|maestro|mobilepay|kort|beløb|betalt|rabat\s*i\s*alt|pant\s*i\s*alt|sum|heraf|cvr|tlf|tel|kasse|bon|ekspedient|saldo|point|bonus)/i;
+const PAYMENT_RE = /\b(mast[e3]r\s*c[a@]r[dao0]|v[i1l]sa|dank[o0]rt|maestro|mobile\s*pay|american\s*express|amex|apple\s*pay|kort)\b/i;
 
-const NOISE_FIRST_LINES = /(kvittering|faktura|velkommen|cvr|tlf|tel\.|www\.|@|\d{4}\s+[a-zæøå]|kasse|dato|bon)/i;
+/** Lines that contain an amount but are never a product. */
+const NOT_ITEM =
+  /(sub\s*total|total|i\s*alt|ialt|at\s*betale|til\s*betaling|\bsum\b|moms|vat|heraf|cvr|\btlf|telefon|\btel\b|betjent|ekspedient|stregkode|\bean\b|\bkort|dankort|visa|mast[e3]r|maestro|mobile\s*pay|byttepenge|kontant|retur|beløb|betalt|saldo|point|bonus|\bks\b|\bbon\b|kasse|antal\s*varer|auth|terminal)/i;
 
-export function parseAmountToken(intPart: string, dec: string): number {
-  return Number(intPart.replace(/[. ]/g, '') + '.' + dec);
+const NOISE_FIRST_LINES = /(kvittering|faktura|velkommen|cvr|tlf|tel\.|www\.|@|\d{4}\s+\p{L}|kasse|dato|\bbon\b)/iu;
+
+/** Fixes digits OCR read as letters inside numbers ("2O,OO" → "20,00", "l4,00" → "14,00"). */
+function fixDigits(line: string): string {
+  // Only whole tokens shaped like an amount are touched, so words ("LOG", "serum l") stay intact.
+  return line.replace(/(?<=^|\s)[\dOoQDlI|][\dOoQDlI|.]*[.,][\dOoQD]{2}(?=\s|$|kr|-)/g, (token) =>
+    /\d/.test(token) ? token.replace(/[OoQD]/g, '0').replace(/[lI|]/g, '1') : token,
+  );
 }
 
 function amountsIn(line: string): number[] {
   const out: number[] = [];
-  for (const m of line.matchAll(AMOUNT_RE)) out.push(parseAmountToken(m[1], m[2]));
+  for (const m of fixDigits(line).matchAll(AMOUNT_RE)) {
+    out.push(Number(m[1].replace(/[. ,]/g, '') + '.' + m[3]));
+  }
   return out;
 }
 
-function validDate(y: number, m: number, d: number): string | undefined {
-  if (y < 100) y += 2000;
-  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 2000 || y > 2100) return undefined;
-  const date = new Date(y, m - 1, d);
-  if (date.getMonth() !== m - 1) return undefined;
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+/** True for barcodes and other long digit runs (EAN, card or reference numbers). */
+function hasBarcode(line: string): boolean {
+  return /\d{8,}/.test(line.replace(/\s/g, ''));
 }
 
-export function findDate(text: string): string | undefined {
-  // yyyy-mm-dd
-  for (const m of text.matchAll(/\b(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\b/g)) {
-    const d = validDate(+m[1], +m[2], +m[3]);
-    if (d) return d;
+function validDate(y: number, m: number, d: number, today: string): string | undefined {
+  if (y < 100) y += 2000;
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 2000) return undefined;
+  const date = new Date(y, m - 1, d);
+  if (date.getMonth() !== m - 1) return undefined; // e.g. 31-02
+  const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return iso <= today ? iso : undefined; // a receipt can't be from the future
+}
+
+const TIME_AFTER = /^\s*(?:kl\.?\s*)?([01]?\d|2[0-3])[.:]([0-5]\d)(?!\d)/i;
+
+/**
+ * Finds the purchase date. Supports dd.mm.åå, dd-mm-åååå, dd/mm/åå, åååå-mm-dd and
+ * "12. okt. 2026", with or without a time. Numbers without separators (like the
+ * 8-digit bonnummer 20220107) are never read as dates. A date followed by a time
+ * wins over other candidates, since that is how receipts print the purchase moment.
+ */
+export function findDate(text: string, today = todayISO()): { date: string; time?: string; candidates: number } | undefined {
+  const found: { date: string; time?: string; index: number }[] = [];
+  const add = (iso: string | undefined, index: number, rest: string) => {
+    if (!iso) return;
+    const t = rest.match(TIME_AFTER);
+    found.push({ date: iso, time: t ? `${t[1].padStart(2, '0')}.${t[2]}` : undefined, index });
+  };
+  const fixed = text.replace(/(\d)\s*([.\-/])\s*(?=\d)/g, '$1$2'); // "18. 10.26" → "18.10.26"
+
+  for (const m of fixed.matchAll(/(?<![\d.,])(20\d{2})([-./])(\d{1,2})\2(\d{1,2})(?![\d,])/g)) {
+    add(validDate(+m[1], +m[3], +m[4], today), m.index!, fixed.slice(m.index! + m[0].length));
   }
-  // dd-mm-yyyy, dd.mm.yy, dd/mm/yyyy (not part of an amount like 12.50)
-  for (const m of text.matchAll(/(?<![\d,.])(\d{1,2})[-./](\d{1,2})[-./](\d{4}|\d{2})(?![\d,])/g)) {
-    const d = validDate(+m[3], +m[2], +m[1]);
-    if (d) return d;
+  for (const m of fixed.matchAll(/(?<![\d.,])(\d{1,2})([-./])(\d{1,2})\2(\d{4}|\d{2})(?![\d,])/g)) {
+    add(validDate(+m[4], +m[3], +m[1], today), m.index!, fixed.slice(m.index! + m[0].length));
   }
-  // 12. sep 2026 / 12 september 2026
-  for (const m of text.matchAll(/\b(\d{1,2})\.?\s*([a-zæøå]{3})[a-zæøå]*\.?\s*(20\d{2})\b/gi)) {
+  for (const m of fixed.matchAll(/\b(\d{1,2})\.?\s*(\p{L}{3})\p{L}*\.?\s*(20\d{2})\b/giu)) {
     const month = MONTHS[m[2].toLowerCase()];
-    if (month) {
-      const d = validDate(+m[3], month, +m[1]);
-      if (d) return d;
-    }
+    if (month) add(validDate(+m[3], month, +m[1], today), m.index!, fixed.slice(m.index! + m[0].length));
   }
-  return undefined;
+  if (!found.length) return undefined;
+  const best = found.find((f) => f.time) ?? found.sort((a, b) => a.index - b.index)[0];
+  const distinct = new Set(found.map((f) => f.date)).size;
+  return { date: best.date, time: best.time, candidates: distinct };
 }
 
 function titleCase(s: string): string {
@@ -77,111 +125,177 @@ function titleCase(s: string): string {
 }
 
 function cleanItemName(line: string): string {
-  return line
+  return fixDigits(line)
     .replace(AMOUNT_RE, '')
-    .replace(/\b\d+\s*[xX×]\s*/g, '')
-    .replace(/\b(stk|kr|dkk)\.?\b/gi, '')
-    .replace(/[*#=_|]+/g, ' ')
+    .replace(/\b\d+\s*[xX×*]\s*/g, '')
+    .replace(/\b(stk|kr|dkk)\.?(?=\s|$)/gi, '')
+    .replace(/[*#=_|~]+/g, ' ')
+    .replace(/\s+[A-Z]$/, '') // trailing VAT code letter ("HVIDLØG 6,00 A")
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
+const letters = (s: string) => (s.match(/\p{L}/gu) ?? []).length;
+
 /**
- * Pulls store, date, total, items, receipt number and card from OCR text of a
- * Danish receipt. OCR is noisy, so every field is optional and the user always
- * reviews the result before saving.
+ * Pulls store, date, total, items, bonnummer, kasse and payment from the OCR text
+ * of a Danish receipt. OCR is noisy, so every field is optional, doubtful values
+ * are listed in `uncertain`, and the user always reviews before saving.
  */
-export function parseReceipt(text: string): ParsedReceipt {
+export function parseReceipt(text: string, { today = todayISO(), lineConfidence }: ParseOptions = {}): ParsedReceipt {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter((l) => l.length > 1);
-  const result: ParsedReceipt = { items: [], online: false };
+  const result: ParsedReceipt = { items: [], online: false, uncertain: [] };
+  const unsure = new Set<ReceiptField>();
+  const lowConf = (line: string | undefined) => !!line && (lineConfidence?.get(line) ?? 100) < LOW_CONFIDENCE;
 
-  // Store: a known chain anywhere near the top, else the first "name-like" line.
-  const top = lines.slice(0, 8);
+  // --- Store: a known chain near the top (fuzzy), else the first name-like line.
+  const top = lines.slice(0, 10);
   let storeIdx = -1;
-  for (let i = 0; i < top.length; i++) {
-    const known = findStoreDefault(top[i]);
-    if (known) {
-      result.store = known.name;
+  for (let i = 0; i < top.length && storeIdx < 0; i++) {
+    const m = matchStore(top[i]);
+    if (m) {
+      result.store = m.store.name;
       storeIdx = i;
-      break;
+      if (!m.exact || lowConf(top[i])) unsure.add('store');
     }
   }
   if (!result.store) {
-    for (const known of [findStoreDefault(text)]) if (known) result.store = known.name;
+    const exact = findStoreDefault(text) ?? lines.map((l) => matchStore(l, 0)?.store).find(Boolean);
+    if (exact) {
+      result.store = exact.name;
+      unsure.add('store');
+    }
   }
   if (!result.store) {
     storeIdx = top.findIndex((l) => {
-      const letters = (l.match(/\p{L}/gu) ?? []).length;
-      return letters >= 3 && letters / l.length > 0.6 && !NOISE_FIRST_LINES.test(l) && amountsIn(l).length === 0;
+      const n = letters(l);
+      return n >= 3 && n / l.length > 0.6 && !NOISE_FIRST_LINES.test(l) && amountsIn(l).length === 0;
     });
-    if (storeIdx >= 0) result.store = titleCase(top[storeIdx].replace(/[^\p{L}\d&' .-]/gu, ''));
+    if (storeIdx >= 0) {
+      result.store = titleCase(top[storeIdx].replace(/[^\p{L}\d&' .-]/gu, ''));
+      unsure.add('store');
+    }
   }
-  // Location: the line right after the store if it is a place name (letters only, e.g. "Frederiksberg Centeret").
+  const known = result.store ? findStoreDefault(result.store) : undefined;
+  if (known) result.category = known.category;
+
+  // Location: the line right after the store if it is a place name ("Frederiksberg Centeret").
   const next = storeIdx >= 0 ? lines[storeIdx + 1] : undefined;
   if (next && /^[\p{L} .'-]{4,40}$/u.test(next) && !NOISE_FIRST_LINES.test(next) && !/^(tak|velkommen)/i.test(next)) {
     result.storeLocation = titleCase(next);
   }
 
-  result.date = findDate(text);
+  // --- Date (+ time).
+  const date = findDate(text, today);
+  if (date) {
+    result.date = date.date;
+    result.time = date.time;
+    const dateLine = lines.find((l) => findDate(l, today)?.date === date.date);
+    if ((date.candidates > 1 && !date.time) || lowConf(dateLine)) unsure.add('date');
+  }
 
-  // Total: prefer "at betale" > "total / i alt" > card lines; fall back to the largest amount.
-  let best: { rank: number; amount: number } | undefined;
-  for (const line of lines) {
-    if (/moms|vat|heraf|subtotal|byttepenge|rabat/i.test(line)) continue;
-    const amounts = amountsIn(line);
-    if (!amounts.length) continue;
+  // --- Total: keyword line with its amount; else the payment line; else the largest amount.
+  let best: { rank: number; amount: number; line: string } | undefined;
+  lines.forEach((line, i) => {
+    if (NOT_TOTAL.test(line)) return;
+    const w = TOTAL_WORDS.find((t) => t.re.test(line));
+    if (!w) return;
+    let amounts = amountsIn(line);
+    let source = line;
+    // Some receipts print the amount on the line below the keyword.
+    if (!amounts.length && lines[i + 1] && letters(lines[i + 1]) <= 3) {
+      amounts = amountsIn(lines[i + 1]);
+      source = lines[i + 1];
+    }
     const amount = amounts[amounts.length - 1];
-    for (const w of TOTAL_WORDS) {
-      if (w.re.test(line) && amount > 0 && (!best || w.rank < best.rank || (w.rank === best.rank && amount > best.amount))) {
-        best = { rank: w.rank, amount };
-      }
+    if (amount > 0 && (!best || w.rank < best.rank)) best = { rank: w.rank, amount, line: source };
+  });
+  const paymentAmounts = lines.filter((l) => PAYMENT_RE.test(l)).flatMap(amountsIn).filter((a) => a > 0);
+  if (best) {
+    result.total = best.amount;
+    if (best.rank > 0 && !paymentAmounts.includes(best.amount)) unsure.add('price');
+    if (lowConf(best.line)) unsure.add('price');
+  } else {
+    const allAmounts = lines.filter((l) => !/moms|vat|heraf|cvr|tlf/i.test(l) && !findDate(l, today)).flatMap(amountsIn);
+    const confirmed = paymentAmounts.filter((a) => allAmounts.filter((x) => x === a).length > 1);
+    const pick = confirmed.length ? confirmed : paymentAmounts.length ? paymentAmounts : allAmounts;
+    if (pick.length) {
+      result.total = Math.max(...pick);
+      unsure.add('price');
     }
   }
-  if (best) result.total = best.amount;
-  else {
-    const all = lines.filter((l) => !/moms|vat|heraf|cvr|tlf/i.test(l)).flatMap(amountsIn);
-    if (all.length) result.total = Math.max(...all);
-  }
 
-  // Items: lines with a name and an amount; "1 x 1.899,00" lines take the name from the line above.
+  // --- Items: text followed by an amount on the right; "1 x 1.899,00" takes the name from the line above.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (i <= storeIdx || NOT_ITEM.test(line)) continue;
+    if (i <= storeIdx || NOT_ITEM.test(line) || hasBarcode(line) || findDate(line, today)) continue;
     const amounts = amountsIn(line);
     if (!amounts.length) continue;
     let name = cleanItemName(line);
-    if ((name.match(/\p{L}/gu) ?? []).length < 3 && i > 0) {
+    if (letters(name) < 3 && i > 0) {
       const prev = lines[i - 1];
-      if (!amountsIn(prev).length && !NOT_ITEM.test(prev) && !findDate(prev)) name = cleanItemName(prev);
+      if (!amountsIn(prev).length && !NOT_ITEM.test(prev) && !hasBarcode(prev) && !findDate(prev, today)) name = cleanItemName(prev);
     }
-    if ((name.match(/\p{L}/gu) ?? []).length >= 3 && !findDate(line)) {
-      result.items.push({ name, amount: amounts[amounts.length - 1] });
-    }
+    const amount = amounts[amounts.length - 1];
+    if (letters(name) >= 3 && amount > 0) result.items.push({ name, amount });
   }
+  if (result.items.length !== 1 || result.items.some((it) => lowConf(lines.find((l) => l.includes(it.name))))) unsure.add('product');
 
-  const receiptNo = text.match(/(?:kassebon|bon\s*nr|bonnr|kvittering\s*nr|kvitt\.?\s*nr|trans(?:aktion)?\.?\s*nr|ordre\s*nr|ordrenummer|receipt\s*no)\.?\s*[:#]?\s*([A-Z0-9-]{3,})/i);
+  // --- Bonnummer and kasse ("KS: 2 BON: 20220107", "Kassebon 3493829", "Bon nr: 0042-117").
+  const fixedText = text.replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0');
+  const receiptNo = fixedText.match(
+    /(?:kassebon|bon\s*nr\.?|bonnr\.?|\bbon\b|kvittering\s*nr\.?|kvitt\.?\s*nr\.?|trans(?:aktion)?\.?\s*nr\.?|ordre\s*nr\.?|ordrenummer|receipt\s*no\.?)\s*[:#.]?\s*(\d[A-Z0-9-]{2,})/i,
+  );
   if (receiptNo) result.receiptNumber = receiptNo[1];
+  const register = fixedText.match(/(?:\bks|\bkasse(?:\s*nr\.?)?)\s*[:.#]?\s*(\d{1,3})\b/i);
+  if (register) result.register = register[1];
 
-  const brand = text.match(/\b(visa|mastercard|dankort|maestro|mobilepay|american express|amex|apple pay)\b/i);
-  // Masked card numbers: "**** 4251", "XXXX XXXX 9921", OCR'd as "+++ 1234" or "... 1234".
-  const last4 = text.match(/(?:[*xX•+#]{2,}[\s*xX•+#]*|\.{3,}\s*)(\d{4})\b/);
-  if (brand) {
-    const b = brand[1].toLowerCase();
-    const name = b === 'mobilepay' ? 'MobilePay' : b === 'apple pay' ? 'Apple Pay' : b === 'amex' ? 'American Express' : titleCase(b);
-    result.paymentMethod = last4 && b !== 'mobilepay' ? `${name} •••• ${last4[1]}` : name;
+  // --- Payment method (+ last four digits when printed masked).
+  const brand = text.match(PAYMENT_RE);
+  if (brand && !/^kort$/i.test(brand[1])) {
+    const b = brand[1].toLowerCase().replace(/\s+/g, '');
+    const name = /^mast/.test(b)
+      ? 'Mastercard'
+      : /^v.sa$/.test(b)
+        ? 'Visa'
+        : /^dank/.test(b)
+          ? 'Dankort'
+          : b === 'mobilepay'
+            ? 'MobilePay'
+            : b === 'applepay'
+              ? 'Apple Pay'
+              : b === 'amex' || b === 'americanexpress'
+                ? 'American Express'
+                : titleCase(b);
+    const last4 = text.match(/(?:[*xX•+#]{2,}[\s*xX•+#]*|\.{3,}\s*)(\d{4})\b/);
+    result.paymentMethod = last4 && name !== 'MobilePay' ? `${name} •••• ${last4[1]}` : name;
+    if (brand[1].toLowerCase().replace(/\s+/g, '') !== name.toLowerCase().replace(/\s+/g, '')) unsure.add('paymentMethod');
   }
 
   result.online = /\b(ordre\s*nr|ordrenummer|www\.|webshop|fortrydelsesret|levering|forsendelse)\b/i.test(text);
+  result.uncertain = [...unsure];
   return result;
 }
 
-/** Product name to pre-fill: the single item, or the most expensive one (groceries become "Dagligvarer"). */
+/** Product name to pre-fill: the single item, or the most expensive one (larger grocery shops become "Dagligvarer"). */
 export function suggestProduct(parsed: ParsedReceipt): string | undefined {
   if (!parsed.items.length) return undefined;
-  if (parsed.items.length > 2 && parsed.store && findStoreDefault(parsed.store)?.category === 'mad') return 'Dagligvarer';
+  if (parsed.items.length > 2 && parsed.category === 'mad') return 'Dagligvarer';
   const main = [...parsed.items].sort((a, b) => b.amount - a.amount)[0];
   return main.name.length > 60 ? main.name.slice(0, 60) : main.name;
+}
+
+/** How complete a parse is (used to pick the best OCR variant): 0–100. */
+export function parseScore(p: ParsedReceipt): number {
+  let s = 0;
+  if (p.store) s += p.uncertain.includes('store') ? 12 : 25;
+  if (p.date) s += p.uncertain.includes('date') ? 12 : 25;
+  if (p.total) s += p.uncertain.includes('price') ? 12 : 25;
+  if (p.items.length) s += 10;
+  if (p.total && p.items.length && Math.abs(p.items.reduce((a, i) => a + i.amount, 0) - p.total) < 0.01) s += 10;
+  if (p.paymentMethod) s += 5;
+  return s;
 }

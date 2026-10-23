@@ -686,6 +686,41 @@ button.row:active {
   color: var(--warn-text);
 }
 
+/* Read by OCR but possibly wrong: softer than "missing", clears once edited. */
+.field.unsure input,
+.field.unsure select {
+  border-color: #c9b3ec;
+  background: var(--info-bg);
+  border-style: dashed;
+}
+
+.field.unsure .hint {
+  color: var(--primary);
+}
+
+details.ocr-text {
+  margin: 0 0 12px;
+}
+
+details.ocr-text summary {
+  cursor: pointer;
+  color: var(--primary);
+  font: 600 13px var(--font-ui);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+details.ocr-text textarea {
+  width: 100%;
+  min-height: 220px;
+  font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--pale);
+  padding: 12px;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

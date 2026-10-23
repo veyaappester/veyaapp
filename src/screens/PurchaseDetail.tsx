@@ -122,7 +122,10 @@ function Detail({ p, today, profileName, noticeDays }: { p: Purchase; today: str
         <div className="row">
           <div className="row-main">
             <span>Købsdato</span>
-            <b>{fmtFull(p.date)}</b>
+            <b>
+              {fmtFull(p.date)}
+              {p.time ? ` kl. ${p.time}` : ''}
+            </b>
           </div>
           <div className="row-main" style={{ textAlign: 'right' }}>
             <span>Pris</span>
@@ -164,7 +167,10 @@ function Detail({ p, today, profileName, noticeDays }: { p: Purchase; today: str
             {p.receiptNumber && (
               <div className="row-main" style={{ textAlign: p.paymentMethod ? 'right' : 'left' }}>
                 <span>Kassebon nr.</span>
-                <b>{p.receiptNumber}</b>
+                <b>
+                  {p.receiptNumber}
+                  {p.register ? ` · kasse ${p.register}` : ''}
+                </b>
               </div>
             )}
           </div>

@@ -6,7 +6,7 @@ import { useToast } from '../components/toastContext';
 import { compressImage } from '../db/images';
 import { parseReceipt } from '../logic/receiptParser';
 import { setScanSession } from '../ocr/scanSession';
-import { readReceiptText, type OcrProgress } from '../ocr/tesseract';
+import { readReceipt, type OcrProgress } from '../ocr/tesseract';
 
 type CameraState = 'idle' | 'starting' | 'live' | 'unavailable';
 
@@ -61,14 +61,16 @@ export default function Scan() {
     setPreview(URL.createObjectURL(source));
     setProgress({ progress: 0, label: 'Gør billedet klar…' });
     try {
-      const { blob, thumb, canvas } = await compressImage(source);
+      const { blob, thumb } = await compressImage(source);
       let text = '';
+      let parsed = parseReceipt('');
       try {
-        text = await readReceiptText(canvas, setProgress);
+        // OCR works on the full-resolution original; the compressed copy is what gets stored.
+        ({ text, parsed } = await readReceipt(source, setProgress));
       } catch {
         toast('Veya kunne ikke læse teksten. Du kan udfylde købet selv.');
       }
-      setScanSession({ blob, thumb, text, parsed: parseReceipt(text) });
+      setScanSession({ blob, thumb, text, parsed });
       navigate('/scan/resultat');
     } catch {
       toast('Billedet kunne ikke åbnes. Prøv et andet billede.');
@@ -106,7 +108,7 @@ export default function Scan() {
           <div className="progress" style={{ maxWidth: 240, margin: '14px auto 8px' }}>
             <i style={{ width: `${Math.round(progress.progress * 100)}%` }} />
           </div>
-          <p className="muted small">Første gang henter Veya læse-data (ca. 5 MB). Alt sker på din telefon.</p>
+          <p className="muted small">Første gang henter Veya læse-data (ca. 9 MB). Alt sker på din telefon.</p>
         </div>
       </section>
     );

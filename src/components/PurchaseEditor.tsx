@@ -17,6 +17,8 @@ interface PurchaseEditorProps {
   editing?: boolean;
   /** Fields the scanner could not find, highlighted until filled in. */
   missing?: (keyof PurchaseDraft)[];
+  /** Fields the scanner found but may have misread, flagged until the user edits them. */
+  uncertain?: (keyof PurchaseDraft)[];
   submitLabel: string;
   busy?: boolean;
   children?: ReactNode;
@@ -25,7 +27,7 @@ interface PurchaseEditorProps {
 
 const RETURN_CHOICES = [14, 30, 60, 100];
 
-export function PurchaseEditor({ profile, initial, editing, missing = [], submitLabel, busy, children, onSubmit }: PurchaseEditorProps) {
+export function PurchaseEditor({ profile, initial, editing, missing = [], uncertain = [], submitLabel, busy, children, onSubmit }: PurchaseEditorProps) {
   const prefsQuery = useLiveQuery(() => db.storePrefs.toArray(), []);
   const prefs = prefsQuery ?? [];
   const [d, setD] = useState<PurchaseDraft>(initial);
@@ -34,8 +36,12 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
   const [showMore, setShowMore] = useState(
     !!(initial.extraWarrantyUntil || initial.note || initial.paymentMethod || initial.receiptNumber || initial.storeLocation),
   );
+  const [edited, setEdited] = useState<Set<keyof PurchaseDraft>>(new Set());
 
-  const set = <K extends keyof PurchaseDraft>(key: K, value: PurchaseDraft[K]) => setD((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof PurchaseDraft>(key: K, value: PurchaseDraft[K]) => {
+    setD((prev) => ({ ...prev, [key]: value }));
+    setEdited((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  };
 
   /** Re-applies store / online defaults to the fields the user hasn't chosen themselves. */
   const applyDefaults = (store: string, online: boolean | undefined, draft: PurchaseDraft, t = touched) => {
@@ -66,6 +72,10 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
   const valid = d.product.trim() && d.store.trim() && validDate && price > 0;
 
   const isMissing = (k: keyof PurchaseDraft) => missing.includes(k) && !String(d[k]).trim();
+  const isUnsure = (k: keyof PurchaseDraft) => uncertain.includes(k) && !edited.has(k) && !!String(d[k]).trim();
+  const cls = (k: keyof PurchaseDraft) => `field${isMissing(k) ? ' missing' : isUnsure(k) ? ' unsure' : ''}`;
+  const unsureHint = (k: keyof PurchaseDraft) =>
+    isUnsure(k) && <span className="hint">Veya er ikke helt sikker. Tjek det mod kvitteringen.</span>;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -83,6 +93,8 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
       extraWarrantyUntil: d.extraWarrantyUntil || undefined,
       paymentMethod: d.paymentMethod.trim() || undefined,
       receiptNumber: d.receiptNumber.trim() || undefined,
+      register: d.register.trim() || undefined,
+      time: d.time.trim() || undefined,
       note: d.note.trim() || undefined,
     });
   };
@@ -96,12 +108,13 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
   return (
     <form className="form" onSubmit={submit} noValidate>
       {children}
-      <label className={`field${isMissing('product') ? ' missing' : ''}`}>
+      <label className={cls('product')}>
         <span>Produkt</span>
         <input value={d.product} onChange={(e) => set('product', e.target.value)} placeholder="Fx AirPods Pro 2" required />
         {isMissing('product') && <span className="hint">Veya kunne ikke finde produktet. Skriv det her.</span>}
+        {unsureHint('product')}
       </label>
-      <label className={`field${isMissing('store') ? ' missing' : ''}`}>
+      <label className={cls('store')}>
         <span>Butik</span>
         <input
           value={d.store}
@@ -112,15 +125,18 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
           required
         />
         {isMissing('store') && <span className="hint">Butikken blev ikke fundet på kvitteringen.</span>}
+        {unsureHint('store')}
       </label>
       <div className="field-row">
-        <label className={`field${isMissing('date') ? ' missing' : ''}`}>
+        <label className={cls('date')}>
           <span>Købsdato</span>
           <input type="date" value={d.date} max={todayISO()} onChange={(e) => set('date', e.target.value)} required />
+          {unsureHint('date')}
         </label>
-        <label className={`field${isMissing('price') ? ' missing' : ''}`}>
+        <label className={cls('price')}>
           <span>Pris (kr.)</span>
           <input inputMode="decimal" value={d.price} onChange={(e) => set('price', e.target.value)} placeholder="0" required />
+          {unsureHint('price')}
         </label>
       </div>
       <label className="field">
@@ -242,13 +258,24 @@ export function PurchaseEditor({ profile, initial, editing, missing = [], submit
             <input value={d.storeLocation} onChange={(e) => set('storeLocation', e.target.value)} placeholder="Fx Frederiksberg Centeret" />
           </label>
           <div className="field-row">
-            <label className="field">
+            <label className={cls('paymentMethod')}>
               <span>Betalt med</span>
               <input value={d.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)} placeholder="Visa •••• 1234" />
+              {unsureHint('paymentMethod')}
             </label>
-            <label className="field">
+            <label className={cls('receiptNumber')}>
               <span>Kassebon nr.</span>
               <input value={d.receiptNumber} onChange={(e) => set('receiptNumber', e.target.value)} />
+            </label>
+          </div>
+          <div className="field-row">
+            <label className="field">
+              <span>Kasse nr.</span>
+              <input value={d.register} onChange={(e) => set('register', e.target.value)} inputMode="numeric" />
+            </label>
+            <label className="field">
+              <span>Klokkeslæt</span>
+              <input value={d.time} onChange={(e) => set('time', e.target.value)} placeholder="17.39" inputMode="decimal" />
             </label>
           </div>
           <label className="field">

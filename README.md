@@ -40,7 +40,20 @@ Korte noter om valg, der ikke står direkte i project.md.
   - Reklamationsret-notifikationen ligger under "Veya passer også på", indtil der er 7 dage tilbage.
   - "Alt klar" vises, når ingen regninger forfalder inden for 7 dage.
 - **Plan:** Tidslinjen viser 60 dage frem ("Vis mere" udvider). Abonnementsfornyelser vises hver gang de forekommer, med den nye pris efter en varslet prisændring. .ics-eksporten dækker 12 måneder.
-- **OCR:** Tesseract.js 7 med dansk + engelsk (`4.0.0_best_int`). Worker, WASM og sprogdata kopieres til `public/ocr` af `scripts/copy-ocr.mjs` (kører før `dev` og `build`, git-ignoreret) og serveres fra appen selv. Filerne caches af service workeren første gang man scanner, så scan virker offline bagefter.
+- **OCR-forbehandling** (`src/ocr/image.ts`), rene funktioner, så browser og test kører det samme:
+  1. EXIF-rotation (browseren gør det selv, testen via `src/ocr/exif.ts`).
+  2. Beskæring væk fra mørk baggrund (Otsu + største lyse område).
+  3. Automatisk opretning ±8° (projektionsprofil).
+  4. Skalering til 1800 px på den lange led, gråtone og kontraststræk (1.–99. percentil).
+  5. Binarisering med adaptiv tærskel (Bradley).
+
+  Den grå variant læses først. Mangler butik, dato eller total, læses den binariserede også, og det bedste resultat beholdes (`src/ocr/pipeline.ts`). Unsharp mask blev afprøvet og fravalgt, fordi den ikke hjalp.
+- **Tesseract-indstillinger:** PSM 6 (ensartet tekstblok) slog PSM 4 klart på testbonnerne (8/8 mod 5/8 felter). Sammenligningen køres med `OCR_COMPARE=1 npx vitest run tests/ocr.compare.test.ts`.
+- **Usikre felter:** Parseren returnerer `uncertain`, når et felt er fundet, men kan være forkert. Det gælder fx fuzzy-matchet butik, total fra en reservelinje, flere mulige datoer eller en OCR-linje med lav konfidens (under 75). Gennemse-skærmen markerer de felter, indtil brugeren retter dem. OCR-teksten kan rettes og læses igen.
+- **Butiksmatch:** Levenshtein-afstand efter OCR-foldning (I/l/1 → 1, O/0 → 0, @ → a). Navne under 6 tegn skal matche præcist efter foldning, ellers bliver almindelige ord til butikker ("LOWER" → Power).
+- **Datoer:** Kun med separatorer, så 8-cifrede bonnumre som `20220107` aldrig læses som dato. Dato med klokkeslæt vinder. Fremtidige datoer og datoer før år 2000 afvises.
+- **Køb** har fået felterne `register` (kasse nr.) og `time` (klokkeslæt fra bonnen). De vises i "Vis i butik".
+- **OCR:** Tesseract.js 7 med dansk + engelsk (`4.0.0_best_int`, dvs. de "best"-trænede modeller i heltalsversion; de findes ikke som float-version i npm-pakkerne). Worker, WASM og sprogdata kopieres til `public/ocr` af `scripts/copy-ocr.mjs` (kører før `dev` og `build`, git-ignoreret) og serveres fra appen selv. Filerne caches af service workeren første gang man scanner, så scan virker offline bagefter.
 - **"Jeg vil reklamere"** bruger Web Share API (tekst + kvitteringsbillede). Hvor det ikke understøttes (de fleste computere), kopieres teksten, og billedet downloades.
 - **PWA:** `vite-plugin-pwa` med auto-opdatering. App-skallen precaches, så appen åbner offline. Ikonerne er genereret ud fra logo-SVG'en (192, 512, maskable og Apple touch).
 - **Browser-notifikationer (v1.5):** slås til under Profil. Højst én opsummering om dagen, når appen åbnes. Ægte push i baggrunden kræver en server (fase 2).

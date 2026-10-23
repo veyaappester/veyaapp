@@ -61,6 +61,21 @@ export function buildNotices(data: AppData, today: ISODate): Notice[] {
           daysLeft: left,
           amount: p.price,
         });
+      } else if (left < 0 && left >= -noticeDays) {
+        // Just missed and still undecided: say so for a few days, then let it go.
+        notices.push({
+          key: `return:${p.id}:${p.returnDeadline}`,
+          kind: 'return',
+          tone: 'danger',
+          group: 'action',
+          icon: 'returnArrow',
+          title: `Returfristen udløb ${relDays(left)}`,
+          subtitle: `${p.product} · ${p.store}. Spørg butikken, eller markér at du beholder den.`,
+          actionLabel: 'Se købet',
+          link: `/koeb/${p.id}`,
+          daysLeft: left,
+          amount: p.price,
+        });
       }
     }
     if (p.status !== 'returned') {

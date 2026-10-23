@@ -219,7 +219,7 @@ function CalendarView({
 
   return (
     <>
-      <div className="info" style={{ padding: '10px 10px 12px' }}>
+      <div className="info" style={{ padding: '10px 4px 12px' }}>
         <CalendarGrid month={month} today={today} selected={selected} items={items} onSelect={onSelect} onMonthChange={onMonth} />
       </div>
       <h2>
@@ -272,27 +272,33 @@ function AlsoWatching({ data, today }: { data: AppData; today: string }) {
     .filter((p) => p.status !== 'returned' && p.complaintUntil >= today)
     .sort((a, b) => a.complaintUntil.localeCompare(b.complaintUntil))[0];
   const nextBill = data.bills.filter((b) => !b.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-  if (!nextComplaint && !nextBill) return null;
   return (
     <>
-      <h2>Veya holder også styr på</h2>
+      <div className="section-head">
+        <h2>Veya holder også styr på</h2>
+        <Link to="/regninger" className="link">
+          Regninger
+        </Link>
+      </div>
       <div className="cards">
-        {nextComplaint && (
+        {nextComplaint ? (
           <Link to={`/koeb/${nextComplaint.id}`} className="mini">
             <div className="label">Næste garantiudløb</div>
-            <strong>{capitalize(fmtShort(nextComplaint.complaintUntil))}</strong>
+            <strong>{fmtDate(nextComplaint.complaintUntil)}</strong>
             <span className="muted">{nextComplaint.product}</span>
           </Link>
-        )}
-        {nextBill && (
-          <Link to="/regninger" className="mini">
-            <div className="label">Næste regning</div>
-            <strong>{kr(nextBill.amount)}</strong>
-            <span className="muted">
-              {nextBill.name} · {fmtShort(nextBill.dueDate)}
-            </span>
+        ) : (
+          <Link to="/koeb" className="mini">
+            <div className="label">Næste garantiudløb</div>
+            <strong>Ingen endnu</strong>
+            <span className="muted">Kommer, når du gemmer køb</span>
           </Link>
         )}
+        <Link to="/regninger" className="mini">
+          <div className="label">Næste regning</div>
+          <strong>{nextBill ? kr(nextBill.amount) : 'Ingen'}</strong>
+          <span className="muted">{nextBill ? `${nextBill.name} · ${fmtShort(nextBill.dueDate)}` : 'Tilføj husleje, el m.m.'}</span>
+        </Link>
       </div>
     </>
   );

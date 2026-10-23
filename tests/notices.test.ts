@@ -58,6 +58,13 @@ describe('buildNotices with demo data', () => {
     expect(buildNotices(dismissed, addDaysISO(today, 1)).some((n) => n.kind === 'return')).toBe(false);
   });
 
+  it('flags a just-missed return deadline in red for a few days', () => {
+    const in3 = addDaysISO(today, 3); // AirPods deadline is today + 2
+    const missed = buildNotices(demo, in3).find((n) => n.kind === 'return');
+    expect(missed).toMatchObject({ tone: 'danger', title: 'Returfristen udløb i går' });
+    expect(buildNotices(demo, addDaysISO(today, 6)).some((n) => n.kind === 'return')).toBe(false);
+  });
+
   it('drops return notices once the purchase is kept or returned', () => {
     const kept = { ...demo, purchases: demo.purchases.map((p) => ({ ...p, status: 'kept' as const })) };
     expect(buildNotices(kept, today).some((n) => n.kind === 'return')).toBe(false);

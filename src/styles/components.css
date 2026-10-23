@@ -478,7 +478,8 @@ button.row:active {
   border: 0;
   border-radius: 10px;
   padding: 0 12px;
-  min-height: 40px;
+  min-height: 44px;
+  min-width: 44px;
   font: 500 12px var(--font-ui);
   color: var(--muted);
   white-space: nowrap;
@@ -1027,8 +1028,9 @@ fieldset.field {
 
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  /* 7 × 44 px tap targets still fit a 375 px phone (with the card's slim side padding). */
+  grid-template-columns: repeat(7, minmax(44px, 1fr));
+  gap: 1px;
   text-align: center;
 }
 

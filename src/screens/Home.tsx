@@ -27,6 +27,7 @@ export default function Home() {
   const budget = budgetStatus(data, today);
   const activeSubs = data.subscriptions.filter((s) => s.active).sort((a, b) => a.nextPayment.localeCompare(b.nextPayment));
   const nextSub = activeSubs[0];
+  const nextBill = data.bills.filter((b) => !b.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
 
   const recent = [
     ...data.purchases.map((p) => ({
@@ -151,6 +152,31 @@ export default function Home() {
               <span>
                 {activeSubs.length} aktive abonnementer
                 {nextSub ? ` · ${nextSub.name} ${relDays(daysBetween(today, nextSub.nextPayment))}` : ''}
+              </span>
+            </div>
+            <Icon name="chevron" className="chev" />
+          </Link>
+        </>
+      )}
+
+      {!isEmpty && (
+        <>
+          <div className="section-head">
+            <h2>Regninger</h2>
+            <Link to="/regninger" className="link">
+              Se alle
+            </Link>
+          </div>
+          <Link to="/regninger" className="row">
+            <div className="row-icon">
+              <Icon name="bill" />
+            </div>
+            <div className="row-main">
+              <b>{nextBill ? `${nextBill.name} · ${kr(nextBill.amount)}` : 'Ingen ubetalte regninger'}</b>
+              <span>
+                {nextBill
+                  ? `${daysBetween(today, nextBill.dueDate) < 0 ? 'Forfaldt' : 'Forfalder'} ${relDays(daysBetween(today, nextBill.dueDate))}`
+                  : 'Husleje, el og andre faste regninger'}
               </span>
             </div>
             <Icon name="chevron" className="chev" />
